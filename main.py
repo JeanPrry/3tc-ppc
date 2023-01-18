@@ -8,7 +8,7 @@ import os
 EVENT1 = 0.025
 EVENT2 = 0.7956
 NOEVENT = 0
-
+# Mon commentaire
 
 def weather_Process(weather):
     while True:
