@@ -22,11 +22,13 @@ def market_Process(weather):
         weather_conditions = weather
         
         signal.signal(signal.SIGUSR1, handler)
+        signal.signal(signal.SIGUSR2, handler)
 
         pexternal = Process(target=external_Process, args=())
         pexternal.start()
     
-        pexternal.join()
+
+        #pexternal.join()
 
 
 def handler(sig,frame):
@@ -41,12 +43,11 @@ def external_Process():
     events_prob = [9, 2, 2]
     while True:
         event = random.choices(events, weights=events_prob, k=1) #Choose one event from the list of events
-        
         if event[0] != 0:
             if event[0] == EVENT1:
-                os.kill(os.getppid(), signal.SIGUSR1)
+                os.kill(os.getpid(), signal.SIGUSR1)
             elif event[0] == EVENT2:
-                os.kill(os.getppid(), signal.SIGUSR2)
+                os.kill(os.getpid(), signal.SIGUSR2)
 
 
 if __name__ == "__main__" :
