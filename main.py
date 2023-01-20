@@ -1,66 +1,154 @@
-import threading
-from multiprocessing import Value, Array, Process
-import random
-import signal
-import os
+module Test exposing (..)
+
+import Browser
+import Html exposing (..)
+import Html.Attributes exposing (style, value, type_)
+import Html.Events exposing (..)
+import Http
+import Json.Decode exposing (Decoder, map2, list, field, string)
+
+-- MAIN
+
+main =
+  Browser.element
+    { init = init
+    , update = update
+    , subscriptions = subscriptions
+    , view = view
+    }
+
+-- MODEL
+
+type Model
+  = Failure
+  | Loading
+  | Success (List Word)
 
 
-EVENT1 = 0.025
-EVENT2 = 0.7956
-NOEVENT = 0
-# Mon commentaire
+type alias Word =
+    { word : String
+    , meanings : List Meaning
+    }
 
-def weather_Process(weather):
-    while True:
-        for i in range(len(weather)):
-            weather[i] = random.random()
+type alias Meaning =
+    { partOfSpeech : String
+    , definitions : List Definition
+    }
+
+type alias Definition =
+    { definition : String
+    }
+
+init : () -> (Model, Cmd Msg)
+init _ =
+  (Loading, getWord)
+
+-- UPDATE
+
+type Msg
+  = GotWord (Result Http.Error (List Word))
+  | CheckWord String
+
+update : Msg -> Model -> (Model, Cmd Msg)
+update msg model =
+    case msg of
+        GotWord (Ok words) ->
+            (Success words, Cmd.none)
+        GotWord (Err error) ->
+            (Failure, Cmd.none)
+        CheckWord entered ->
+            (model, Cmd.none)
+
+-- SUBSCRIPTIONS
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+  Sub.none
+
+-- VIEW
+
+view : Model -> Html Msg
+view model =
+  div []
+    [ h2 [] [ text "Word Definitions" ]
+    , viewWord model
+    , input [ type_ "text", onInput CheckWord] []
+    , viewWordMatch model
+    ]
 
 
-def market_Process(weather):
-    energy_price = Value("d",0.0)
-    while True:
-        weather_conditions = weather
-        
-        signal.signal(signal.SIGUSR1, handler)
-        signal.signal(signal.SIGUSR2, handler)
 
-        pexternal = Process(target=external_Process, args=())
-        pexternal.start()
-    
+viewWord : Model -> Html Msg
+viewWord model =
+  case model of
+    Failure ->
+      div []
+        [ text "I could not load the word for some reason. "        ]
 
-        #pexternal.join()
+    Loading ->
+      text "Loading..."
 
+    Success words ->
+        div [] (List.map viewWordMeaning words)
 
-def handler(sig,frame):
-    if sig == signal.SIGUSR1:
-        print("1")
-    elif sig == signal.SIGUSR2:
-        print("2")
+viewWordMeaning : Word -> Html Msg
+viewWordMeaning word =
+    div []
+        [ 
+           ul [] (List.map viewMeaning word.meanings)
+        ]
 
+viewMeaning : Meaning -> Html Msg
+viewMeaning meaning =
+    li []
+        [ text meaning.partOfSpeech        , ul [] (List.map viewDefinition meaning.definitions)
+        ]
 
-def external_Process():
-    events = [NOEVENT, EVENT1, EVENT2]
-    events_prob = [9, 2, 2]
-    while True:
-        event = random.choices(events, weights=events_prob, k=1) #Choose one event from the list of events
-        if event[0] != 0:
-            if event[0] == EVENT1:
-                os.kill(os.getpid(), signal.SIGUSR1)
-            elif event[0] == EVENT2:
-                os.kill(os.getpid(), signal.SIGUSR2)
+viewDefinition : Definition -> Html Msg
+viewDefinition def =
+    li [] [ text def.definition ]
 
+viewWordMatch : Model -> Html Msg
+viewWordMatch model =
+  case model of
+    Success words ->
+        case words of
+            word::_ ->
+                case (word.word == enteredWord) of
+                    True -> text "You found the word!"
+                    False -> text "Pute"
+            _ -> text ""
+    _ -> text ""
 
-if __name__ == "__main__" :
+enteredWord : String
+enteredWord = ""
 
-    weather_conditions = Array("d", range(2))
+-- HTTP
 
-    pweather = Process(target=weather_Process, args=(weather_conditions,))
-    pmarket = Process(target=market_Process, args=(weather_conditions,))
-    
+getWord : Cmd Msg
+getWord =
+    Http.get
+    { url = "https://api.dictionaryapi.dev/api/v2/entries/en/hello"
+    , expect = Http.expectJson GotWord descriptionDecoder
+    }
 
-    pweather.start()
-    pmarket.start()
+--Decoder
+descriptionDecoder : Decoder (List Word)
+descriptionDecoder = Json.Decode.list wordDecoder
 
-    pweather.join()
-    pmarket.join()
-    
+wordDecoder : Decoder Word
+wordDecoder =
+    map2 Word
+        (field "word" string)
+        (field "meanings" (Json.Decode.list meaningDecoder))
+
+meaningDecoder : Decoder Meaning
+meaningDecoder =
+    map2 Meaning
+        (field "partOfSpeech" string)
+        (field "definitions" (Json.Decode.list definitionDecoder))
+
+definitionDecoder : Decoder Definition
+definitionDecoder =
+    Json.Decode.map Definition
+        (field "definition" string)
