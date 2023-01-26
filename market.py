@@ -7,10 +7,11 @@ import random
 from multiprocessing import Process, Array, Value
 import select
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 
 def weather_process(weather, change, run):
-    SUNNY = 0.2
+    SUNNY = - 0.2
     CLOUDY = 0.5
     RAINY = 0.7
     SNOWY = 0.9
@@ -37,18 +38,19 @@ def weather_process(weather, change, run):
 
     while run.value:
         if change.value:
-            m = month.value % 12
-            if 0 <= m < 3:
+            d = day.value % 365
+            if 0 <= d < 91:
                 season = "winter"
-            elif 3 <= m < 6:
+            elif 91 <= d < 182:
                 season = "spring"
-            elif 6 <= m < 9:
+            elif 182 <= d < 273:
                 season = "summer"
-            elif 9 <= m < 12:
+            elif 273 <= d < 365:
                 season = "automn"
 
             weather[0] = random.choices(list_weather, weights=coef_prob[season]["weather_coef"], k=1)[0]
             weather[1] = random.gauss(mu=coef_prob[season]["mean_temperature"], sigma=1)
+            list_temp[d] = weather[1]
             change.value = 0
 
 
@@ -106,7 +108,7 @@ def han_market(run):
             readable, writable, error = select.select([server_socket], [], [], 1)
             if server_socket in readable and len(threads) <= 10:
                 client_socket, address = server_socket.accept()
-                thread = threading.Thread(target=han_client_market, args=(client_socket,run))
+                thread = threading.Thread(target=han_client_market, args=(client_socket, run))
                 threads.append(thread)
                 thread.start()
 
@@ -121,8 +123,8 @@ def han_client_market(client, run):
 
 
 HOST = "localhost"
-PORT_MAIN = 8889
-PORT_MARKET = 5559
+PORT_MAIN = 9993
+PORT_MARKET = 2225
 
 EVENT1 = 0.025
 EVENT2 = 0.7956
@@ -133,22 +135,50 @@ weather_change = Value("i", 0)
 new_external = Value("i", 0)
 external_impact = 0
 run = Value("i", 1)
-month = Value("i", 0)
+day = Value("i", 0)
 energy_price = Value("d", 50)
 next = Value("i", 0)
 
-list_price = [energy_price.value]
-list_month = [month.value]
+list_price = Array("d", [0] * 365)
+list_price[0] = energy_price.value
+
+list_temp = Array("d", [0] * 365)
+list_temp[0] = weather_conditions[1]
+
+
+def animate():
+
+    fig, axs = plt.subplots(2, 1)
+    line1, = axs[0].plot(range(365), list_price)
+    axs[0].set_ylabel("Price")
+    axs[0].set_ylim(0, 300)
+    line2, = axs[1].plot(range(365), list_temp)
+    axs[1].set_ylabel("Temperature")
+    axs[1].set_ylim(-5, 35)
+
+    # Create the animation object
+    ani = animation.FuncAnimation(fig, update, frames=range(365), blit=True, fargs=(line1, line2))
+    plt.show()
+
+
+def update(num, line1, line2):
+    x = range(365)
+    line1.set_data(x, list_price)
+    line2.set_data(x, list_temp)
+    return line1, line2
+
 
 pweather = Process(target=weather_process, args=(weather_conditions, weather_change, run))
 thread_main = threading.Thread(target=han_main, args=(weather_change, run, new_external))
 thread_market = threading.Thread(target=han_market, args=(run, ))
 process_external = Process(target=external_process, args=(new_external, run))
+process_plot = Process(target=animate, args=())
 
 thread_main.start()
 thread_market.start()
 pweather.start()
 process_external.start()
+process_plot.start()
 
 signal.signal(signal.SIGUSR1, handler_signals)
 signal.signal(signal.SIGUSR2, handler_signals)
@@ -159,22 +189,16 @@ while run.value:
         pass
 
     if run.value: #dans le cas où run passe à false pendant la boucle du dessus
-        month.value += 1
+        day.value += 1
         next.value = 1
-        energy_price.value = energy_price.value + 0.1 * weather_conditions[0] + 0.5 * weather_conditions[1] + 0.8 * external_impact
+        energy_price.value = 0.998 * energy_price.value + 2 * weather_conditions[0] - 0.02 * weather_conditions[1] + 0.1 * external_impact
 
-        list_price.append(energy_price.value)
-        list_month.append(month.value)
+        list_price[day.value % 365] = energy_price.value
 
-        plt.xlabel('Months')
-        plt.ylabel("Energy Price")
-        plt.plot(list_month, list_price)
-        plt.show()
-        plt.close()
-
-        print("At month ", month.value, ", energy price : ", energy_price.value)
+        #print("At day ", day.value, ", energy price : ", energy_price.value)
 
 pweather.join()
 thread_main.join()
 pweather.join()
 process_external.join()
+process_plot.join()
