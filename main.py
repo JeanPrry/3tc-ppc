@@ -1,32 +1,52 @@
-from multiprocessing import Array, Process
-import random
-from market import market_process
-from home import home_process
+import socket
+import select
+import threading
+
+HOST = "localhost"
+PORT = 8889
+
+global serve
+serve = True
 
 
-def weather_process(weather):
-    while True:
-        for i in range(len(weather)):
-            weather[i] = random.random()
+def handler_client(list_clients):
+    data = ""
+    while data != "end":
+        if not len(data):
+            for client in list_clients:
+                data = "Enter"
+                client.sendall(data.encode())
+        if data == "external event":
+            for client in list_clients:
+                client.sendall(data.encode())
+
+        data = input()
+
+    for client in list_clients: #Terminate connection
+        client.sendall(data.encode())
+
+    global serve
+    serve = False
 
 
 if __name__ == "__main__" :
 
-    weather_conditions = Array("d", range(2))
+    serve = True
+    list_clients = []
 
-    pweather = Process(target=weather_process, args=(weather_conditions,))
-    pmarket = Process(target=market_process, args=(weather_conditions,))
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
-    #IMPLEMENT POOLS
-    phome1 = Process(target=home_process, args=())
-    phome2 = Process(target=home_process, args=())
+        server_socket.setblocking(False)
+        server_socket.bind((HOST, PORT))
+        server_socket.listen(2)
 
-    pweather.start()
-    pmarket.start()
-    phome1.start()
-    phome2.start()
+        thread = threading.Thread(target=handler_client, args=(list_clients,))
+        thread.start()
 
-    pweather.join()
-    pmarket.join()
-    phome1.join()
-    phome2.join()
+        while serve:
+            readable, writable, error = select.select([server_socket], [], [], 1)
+            if server_socket in readable:
+                client_socket, address = server_socket.accept()
+                list_clients.append(client_socket)
+
+        thread.join()
