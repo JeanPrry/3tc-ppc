@@ -49,7 +49,7 @@ def weather_process(weather, change, run):
                 season = "automn"
 
             weather[0] = random.choices(list_weather, weights=coef_prob[season]["weather_coef"], k=1)[0]
-            weather[1] = random.gauss(mu=coef_prob[season]["mean_temperature"], sigma=1)
+            weather[1] = random.gauss(mu=coef_prob[season]["mean_temperature"], sigma=2)
             list_temp[d] = weather[1]
             change.value = 0
 
@@ -89,9 +89,9 @@ def han_main(weather, run, external):
 def handler_signals(sig, frame):
     global external_impact
     if sig == signal.SIGUSR1:
-        external_impact = 20
+        external_impact = 2
     elif sig == signal.SIGUSR2:
-        external_impact = 50
+        external_impact = 5
 
 
 def han_market(run):
@@ -123,8 +123,8 @@ def han_client_market(client, run):
 
 
 HOST = "localhost"
-PORT_MAIN = 9993
-PORT_MARKET = 2225
+PORT_MAIN = 1115
+PORT_MARKET = 4445
 
 EVENT1 = 0.025
 EVENT2 = 0.7956
@@ -157,7 +157,7 @@ def animate():
     axs[1].set_ylim(-5, 35)
 
     # Create the animation object
-    ani = animation.FuncAnimation(fig, update, frames=range(365), blit=True, fargs=(line1, line2))
+    ani = animation.FuncAnimation(fig, update, frames=365, blit=True, fargs=(line1, line2))
     plt.show()
 
 
