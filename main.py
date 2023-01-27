@@ -1,9 +1,10 @@
 import socket
 import select
 import threading
+import time
 
 HOST = "localhost"
-PORT = 1115
+PORT = 1118
 
 global serve
 serve = True
@@ -16,9 +17,11 @@ def handler_client(list_clients):
             for client in list_clients:
                 data = "Enter"
                 client.sendall(data.encode())
+                time.sleep(0.01)
         if data == "external event":
             for client in list_clients:
                 client.sendall(data.encode())
+                time.sleep(0.01)
 
         data = input()
 

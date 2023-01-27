@@ -123,8 +123,8 @@ def han_client_market(client, run):
 
 
 HOST = "localhost"
-PORT_MAIN = 1115
-PORT_MARKET = 4445
+PORT_MAIN = 1118
+PORT_MARKET = 4446
 
 EVENT1 = 0.025
 EVENT2 = 0.7956
