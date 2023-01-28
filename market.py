@@ -8,6 +8,7 @@ from multiprocessing import Process, Array, Value
 import select
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from const import *
 
 
 def weather_process(weather, change, run):
@@ -119,12 +120,8 @@ def han_market(run):
 def han_client_market(client, run):
 
     while run.value:
-        client.sendall(input().encode())
+        pass
 
-
-HOST = "localhost"
-PORT_MAIN = 1118
-PORT_MARKET = 4446
 
 EVENT1 = 0.025
 EVENT2 = 0.7956

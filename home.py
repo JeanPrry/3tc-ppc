@@ -1,82 +1,131 @@
 import socket
 import threading
-from multiprocessing import Value, Queue, Process, Array
+from multiprocessing import Value, Process, Array, Barrier
 import random
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import sysv_ipc
+from const import *
 
 
 key = 42
 
 
-def q_server(homes, run): # Gestion de la queue
+def q_server(consumptions, productions, policies, run, barrier): # Gestion de la queue
 
     mq_demande = sysv_ipc.MessageQueue(key, sysv_ipc.IPC_CREAT)
     mq_offre = sysv_ipc.MessageQueue(key + 1, sysv_ipc.IPC_CREAT)
 
     while run.value:
 
-        for home in homes:
+        barrier.wait()
+        print(consumptions[0], " ", productions[0], " , ", consumptions[1], " ", productions[1], " , ", consumptions[2], " ", productions[2])
 
-            energy_left = home.production.value - home.consumption.value
+        for k in range(3):
 
-            if energy_left > 0: # Si on a de l'énergie en trop
-                if home.policy == 1:    # On donne tout le temps
-                    mq_offre.send(str(energy_left).encode())
-                    home.production.value -= energy_left
+            for i in range(len(consumptions)):
 
-                elif home.policy == 2:  # On vend direct au market
-                    pass
+                energy_left = productions[i] - consumptions[i]
 
-                elif home.policy == 3:  # On donne si on a de la demande
-                    message, type = mq_demande.receive()
-                    message = message.decode()
-                    if message != "":   # Si on a de la demande
-                        energy_to_send = int(message)
-                        if energy_to_send > energy_left:    # Si on a moins d'énergie que demandé
-                            mq_offre.send(str(energy_left).encode())
-                            home.production.value -= energy_left
+                if energy_left > 0: # Si on a de l'énergie en trop
+                    if policies[i] == 1:    # On donne tout le temps
+                        mq_offre.send(str(energy_left).encode())
+                        productions[i] -= energy_left
 
-                        else:   # Si on a plus d'énergie que demandé
-                            mq_offre.send(str(energy_to_send).encode())
-                            home.production.value -= energy_to_send
-
-                    else:
-                        # on envoie au market
+                    elif policies[i] == 2:  # On vend direct au market
                         pass
 
-            else:   # Si on a est en déficit
-                deficit = -energy_left
-                mq_demande.send(str(deficit).encode())
+                    elif policies[i] == 3:  # On donne si on a de la demande
+                        try:
+                            message, type = mq_demande.receive(block=False)
+                            message = message.decode()
+                            if message != "":   # Si on a de la demande
+                                energy_to_send = float(message)
+                                if energy_to_send > energy_left:    # Si on a moins d'énergie que demandé
+                                    mq_offre.send(str(energy_left).encode())
+                                    productions[i] -= energy_left
 
-                energy_received, _ = mq_offre.receive()
-                energy_received = int(energy_received.decode())
+                                else:   # Si on a plus d'énergie que demandé
+                                    mq_offre.send(str(energy_to_send).encode())
+                                    productions[i] -= energy_to_send
 
-                if energy_received < deficit:  # Si on a recu moins que nécessaire
-                    home.production.value += energy_received
-                else:   # Si on a recu plus que nécessaire
-                    home.production.value += deficit
-                    mq_offre.send(str(energy_received - deficit).encode())  # On renvoie l'énergie en trop
+                            else:
+                                # on envoie au market
+                                pass
+
+                        except sysv_ipc.BusyError:
+                            pass
+
+                        message, type = mq_demande.receive(timeout=0.01)
+                        message = message.decode()
+                        if message != "":   # Si on a de la demande
+                            energy_to_send = float(message)
+                            if energy_to_send > energy_left:    # Si on a moins d'énergie que demandé
+                                mq_offre.send(str(energy_left).encode())
+                                productions[i] -= energy_left
+
+                            else:   # Si on a plus d'énergie que demandé
+                                mq_offre.send(str(energy_to_send).encode())
+                                productions[i] -= energy_to_send
+
+                        else:
+                            # on envoie au market
+                            pass
+
+                else:   # Si on a est en déficit
+                    deficit = -energy_left
+                    try:
+                        energy_received, _ = mq_offre.receive(block=False)
+                        energy_received = energy_received.decode()
+
+                        if energy_received != "":  # On regarde si il y a de l'énergie disponible
+                            energy_received = float(energy_received)
+
+                            if energy_received < deficit:  # Si on a recu moins que nécessaire
+                                productions[i] += energy_received
+                            else:  # Si on a recu plus que nécessaire
+                                productions[i] += deficit
+                                mq_offre.send(str(energy_received - deficit).encode())  # On renvoie l'énergie en trop
+                        else:
+                            mq_demande.send(str(deficit).encode())  # On fait une demande
+
+                    except sysv_ipc.BusyError:
+                        pass
+
+        print(consumptions[0], " ", productions[0], " , ", consumptions[1], " ", productions[1], " , ", consumptions[2],
+              " ", productions[2], "\n")
+
+        # Empty the queues
+        while True:
+            try:
+                message, t = mq_demande.receive(block=False)
+                print("Demande ", message.decode())
+            except sysv_ipc.BusyError:
+                pass
+        while True:
+            try:
+                message, t = mq_offre.receive(block=False)
+                print("Offre ", message.decode())
+            except sysv_ipc.BusyError:
+                pass
 
     mq_demande.remove()
     mq_offre.remove()
 
 
 def han_tcp_main(host, port, run, barrier):
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((host, port))
+        barrier.wait()
 
         while run.value:
             m = client_socket.recv(1024).decode()
             if m == "Enter":
-                #print("It works !")
-                next.value = 0
                 barrier.wait()
 
             if m == "end":
                 run.value = 0
-
 
             m = "wait for new command"
 
@@ -95,8 +144,8 @@ class Home:
 
     def __init__(self, barrier):
 
-        self.consumption = Value("i", random.randint(1, 100))
-        self.production = Value("i", random.randint(1, 100))
+        self.consumption = random.randint(1, 100)
+        self.production = random.randint(1, 100)
         self.policy = 1
 
         tcp_main = threading.Thread(target=han_tcp_main, args=(HOST, PORT_MAIN, run, barrier))
@@ -106,10 +155,6 @@ class Home:
         tcp_market.start()
 
 
-HOST = "localhost"
-PORT_MAIN = 1118
-PORT_MARKET = 4446
-
 run = Value("i", 1)
 next = Value("i", 0)
 
@@ -117,7 +162,7 @@ home_list = []
 largeur = 0.3
 
 nb_home = 3
-barrier = threading.Barrier(nb_home + 1)
+barrier = Barrier(5)
 
 for i in range(nb_home):
     home = Home(barrier)
@@ -127,10 +172,12 @@ y1 = Array("d", range(len(home_list)))
 y2 = Array("d", range(len(home_list)))
 x1 = Array("d", range(len(home_list)))
 x2 = Array("d", [i + largeur for i in x1])
+policies = Array("i", range(len(home_list)))
 
 for i in range(len(home_list)):
-    y1[i] = home_list[i].consumption.value
-    y2[i] = home_list[i].production.value
+    y1[i] = home_list[i].consumption
+    y2[i] = home_list[i].production
+    policies[i] = home_list[i].policy
 
 
 def animate():
@@ -151,30 +198,22 @@ def update(num, ax):
 
 
 p = Process(target=animate, args=())
-p_q = Process(target=q_server, args=(home_list, run))
+p_q = Process(target=q_server, args=(y1, y2, policies, run, barrier))
 
 p.start()
 p_q.start()
 
+barrier.wait()
 
 while run.value:
 
-    while next.value and run.value:
-        pass
-    if run.value: # dans le cas où run passe à false pendant la boucle du dessus
-        barrier.wait()
-        next.value = 1
+    j = 0
+    for i in range(len(y1)):
+        y1[i] = random.randint(1, 100)
+        y2[i] = random.randint(1, 100)
+        j += 1
+    barrier.wait()
 
-        print(home_list[0].production, " , ", home_list[0].consumption.value)
-        print()
-
-        i = 0
-        for h in home_list:
-            h.consumption.value = random.randint(1, 100)
-            h.production.value = random.randint(1, 100)
-            y1[i] = home_list[i].consumption.value
-            y2[i] = home_list[i].production.value
-            i += 1
 
 p.join()
 p_q.join()
