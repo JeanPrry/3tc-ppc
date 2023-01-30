@@ -33,11 +33,11 @@ def q_server(consumptions, productions, policies, run, barrier):    # Gestion de
                         productions[i] -= energy_left
 
                     elif policies[i] == 2:  # On vend direct au market
-                        pass
+                        message_to_market.value = energy_left
 
                     elif policies[i] == 3:  # On donne si on a de la demande
                         try:
-                            message, type = mq_demande.receive(block=False)
+                            message, t = mq_demande.receive(block=False)
                             message = message.decode()
                             if message != "":   # Si on a de la demande
                                 energy_to_send = float(message)
@@ -50,26 +50,9 @@ def q_server(consumptions, productions, policies, run, barrier):    # Gestion de
                                     productions[i] -= energy_to_send
 
                             else:
-                                # on envoie au market
-                                pass
+                                message_to_market.value = energy_left
 
                         except sysv_ipc.BusyError:
-                            pass
-
-                        message, type = mq_demande.receive(timeout=0.01)
-                        message = message.decode()
-                        if message != "":   # Si on a de la demande
-                            energy_to_send = float(message)
-                            if energy_to_send > energy_left:    # Si on a moins d'énergie que demandé
-                                mq_offre.send(str(energy_left).encode())
-                                productions[i] -= energy_left
-
-                            else:   # Si on a plus d'énergie que demandé
-                                mq_offre.send(str(energy_to_send).encode())
-                                productions[i] -= energy_to_send
-
-                        else:
-                            # on envoie au market
                             pass
 
                 else:   # Si on a est en déficit
@@ -91,6 +74,11 @@ def q_server(consumptions, productions, policies, run, barrier):    # Gestion de
 
                     except sysv_ipc.BusyError:
                         pass
+
+        for i in range(len(consumptions)):
+            if consumptions[i] > productions[i]:
+                deficit = productions[i] - consumptions[i]
+                message_to_market.value = deficit
 
         print(consumptions[0], " ", productions[0], " , ", consumptions[1], " ", productions[1], " , ", consumptions[2],
               " ", productions[2], "\n")
@@ -131,14 +119,15 @@ def han_tcp_main(host, port, run, barrier):
             m = "wait for new command"
 
 
-def han_tcp_market(host, port, run):
+def han_tcp_market(host, port, run, message_to_market):
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((host, port))
-        msg = client_socket.recv(1024).decode()
         while run.value:
-            print(msg)
-            msg = client_socket.recv(1024).decode()
+            if message_to_market.value != 0:
+                # envoi message au market
+                client_socket.sendall(str(message_to_market.value).encode())
+                message_to_market.value = 0
 
 
 run = Value("i", 1)
@@ -153,6 +142,7 @@ y2 = Array("d", range(nb_home))
 x1 = Array("d", range(nb_home))
 x2 = Array("d", [i + largeur for i in x1])
 policies = Array("i", range(nb_home))
+message_to_market = Value("d", 0)
 
 for i in range(nb_home):
     y1[i] = random.randint(1, 100)
@@ -160,7 +150,7 @@ for i in range(nb_home):
     policies[i] = 1
 
     tcp_main = threading.Thread(target=han_tcp_main, args=(HOST, PORT_MAIN, run, barrier))
-    tcp_market = threading.Thread(target=han_tcp_market, args=(HOST, PORT_MARKET, run))
+    tcp_market = threading.Thread(target=han_tcp_market, args=(HOST, PORT_MARKET, run, message_to_market))
     tcp_main.start()
     tcp_market.start()
 
