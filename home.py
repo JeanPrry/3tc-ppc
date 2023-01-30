@@ -11,7 +11,7 @@ from const import *
 key = 42
 
 
-def q_server(consumptions, productions, policies, run, barrier): # Gestion de la queue
+def q_server(consumptions, productions, policies, run, barrier):    # Gestion de la queue
 
     mq_demande = sysv_ipc.MessageQueue(key, sysv_ipc.IPC_CREAT)
     mq_offre = sysv_ipc.MessageQueue(key + 1, sysv_ipc.IPC_CREAT)
@@ -99,15 +99,14 @@ def q_server(consumptions, productions, policies, run, barrier): # Gestion de la
         while True:
             try:
                 message, t = mq_demande.receive(block=False)
-                print("Demande ", message.decode())
             except sysv_ipc.BusyError:
-                pass
+                break
         while True:
             try:
                 message, t = mq_offre.receive(block=False)
-                print("Offre ", message.decode())
             except sysv_ipc.BusyError:
-                pass
+                break
+        barrier.wait()
 
     mq_demande.remove()
     mq_offre.remove()
@@ -115,13 +114,15 @@ def q_server(consumptions, productions, policies, run, barrier): # Gestion de la
 
 def han_tcp_main(host, port, run, barrier):
 
+    barrier.wait()
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((host, port))
-        barrier.wait()
 
         while run.value:
             m = client_socket.recv(1024).decode()
             if m == "Enter":
+                barrier.wait()
                 barrier.wait()
 
             if m == "end":
@@ -140,44 +141,28 @@ def han_tcp_market(host, port, run):
             msg = client_socket.recv(1024).decode()
 
 
-class Home:
-
-    def __init__(self, barrier):
-
-        self.consumption = random.randint(1, 100)
-        self.production = random.randint(1, 100)
-        self.policy = 1
-
-        tcp_main = threading.Thread(target=han_tcp_main, args=(HOST, PORT_MAIN, run, barrier))
-        tcp_market = threading.Thread(target=han_tcp_market, args=(HOST, PORT_MARKET, run))
-
-        tcp_main.start()
-        tcp_market.start()
-
-
 run = Value("i", 1)
-next = Value("i", 0)
 
-home_list = []
 largeur = 0.3
 
 nb_home = 3
-barrier = Barrier(5)
+barrier = Barrier(nb_home + 2)
+
+y1 = Array("d", range(nb_home))
+y2 = Array("d", range(nb_home))
+x1 = Array("d", range(nb_home))
+x2 = Array("d", [i + largeur for i in x1])
+policies = Array("i", range(nb_home))
 
 for i in range(nb_home):
-    home = Home(barrier)
-    home_list.append(home)
+    y1[i] = random.randint(1, 100)
+    y2[i] = random.randint(1, 100)
+    policies[i] = 1
 
-y1 = Array("d", range(len(home_list)))
-y2 = Array("d", range(len(home_list)))
-x1 = Array("d", range(len(home_list)))
-x2 = Array("d", [i + largeur for i in x1])
-policies = Array("i", range(len(home_list)))
-
-for i in range(len(home_list)):
-    y1[i] = home_list[i].consumption
-    y2[i] = home_list[i].production
-    policies[i] = home_list[i].policy
+    tcp_main = threading.Thread(target=han_tcp_main, args=(HOST, PORT_MAIN, run, barrier))
+    tcp_market = threading.Thread(target=han_tcp_market, args=(HOST, PORT_MARKET, run))
+    tcp_main.start()
+    tcp_market.start()
 
 
 def animate():
@@ -207,6 +192,7 @@ barrier.wait()
 
 while run.value:
 
+    barrier.wait()
     j = 0
     for i in range(len(y1)):
         y1[i] = random.randint(1, 100)
