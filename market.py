@@ -120,7 +120,12 @@ def han_market(run):
 def han_client_market(client, run):
 
     while run.value:
-        pass
+        data = client.recv(1024).decode()
+        data = float(data)
+        if data > 0:
+            print("vend ", data)
+        elif data < 0:
+            print("achete ", data)
 
 
 EVENT1 = 0.025
