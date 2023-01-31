@@ -9,6 +9,7 @@ import select
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from const import *
+import math
 
 
 def weather_process(weather, change, run):
@@ -90,9 +91,9 @@ def han_main(weather, run, external):
 def handler_signals(sig, frame):
     global external_impact
     if sig == signal.SIGUSR1:
-        external_impact = 2
+        external_impact = 0.3
     elif sig == signal.SIGUSR2:
-        external_impact = 5
+        external_impact = -0.2
 
 
 def han_market(run,lock1, lock2, quantite_achete, quantite_vendue):
@@ -142,7 +143,7 @@ new_external = Value("i", 0)
 external_impact = 0
 run = Value("i", 1)
 day = Value("i", 0)
-energy_price = Value("d", 50)
+energy_price = Value("d", 0.4)
 next = Value("i", 0)
 
 quantite_achete =Value("d", 0)
@@ -162,7 +163,7 @@ def animate():
     fig, axs = plt.subplots(2, 1)
     line1, = axs[0].plot(range(365), list_price)
     axs[0].set_ylabel("Price")
-    axs[0].set_ylim(-100, 100)
+    axs[0].set_ylim(0, 2)
     line2, = axs[1].plot(range(365), list_temp)
     axs[1].set_ylabel("Temperature")
     axs[1].set_ylim(-5, 35)
@@ -204,10 +205,11 @@ while run.value:
         next.value = 1
         print("somme achat", quantite_achete.value)
         print("somme vente", quantite_vendue.value)
-        energy_price.value = 1.02 * energy_price.value + 0.002 * weather_conditions[0] - 0.002 * weather_conditions[1] + 0.1 * external_impact
+        energy_price.value = 0.98 * energy_price.value + 0.02 *weather_conditions[0] + 0.02 * math.exp(-weather_conditions[1]) + external_impact - 0.00001*quantite_achete.value - 0.00001*quantite_vendue.value
         quantite_vendue.value = 0
         quantite_achete.value = 0
         list_price[day.value % 365] = energy_price.value
+        external_impact=0
 
         #print("At day ", day.value, ", energy price : ", energy_price.value)
 
