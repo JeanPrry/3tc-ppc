@@ -19,12 +19,12 @@ def handler_client(list_clients):
                 data = "Enter"
                 client.sendall(data.encode())
                 time.sleep(0.01)
-                data = input()
+            data = input()
         if data == "external event":
             for client in list_clients:
                 client.sendall(data.encode())
                 time.sleep(0.01)
-                data = input()
+            data = input()
         if data == "end":
             print("Program is terminated")
             client.sendall(data.encode())
