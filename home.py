@@ -21,7 +21,7 @@ def q_server(consumptions, productions, policies, run, barrier, b):    # Gestion
         barrier.wait()
         print(consumptions[0], " ", productions[0], " , ", consumptions[1], " ", productions[1], " , ", consumptions[2], " ", productions[2])
 
-        for k in range(3):
+        for k in range(10):
 
             for i in range(len(consumptions)):
 
@@ -34,6 +34,7 @@ def q_server(consumptions, productions, policies, run, barrier, b):    # Gestion
 
                     elif policies[i] == 2:  # On vend direct au market
                         message_to_market.value = energy_left
+                        productions[i] -= energy_left
                         b.wait()
                         b.wait()
 
@@ -41,43 +42,40 @@ def q_server(consumptions, productions, policies, run, barrier, b):    # Gestion
                         try:
                             message, t = mq_demande.receive(block=False)
                             message = message.decode()
-                            if message != "":   # Si on a de la demande
-                                energy_to_send = float(message)
-                                if energy_to_send > energy_left:    # Si on a moins d'énergie que demandé
-                                    mq_offre.send(str(energy_left).encode())
-                                    productions[i] -= energy_left
+                            energy_to_send = float(message)
+                            if energy_to_send > energy_left:    # Si on a moins d'énergie que demandé
+                                mq_offre.send(str(energy_left).encode())
+                                productions[i] -= energy_left
 
-                                else:   # Si on a plus d'énergie que demandé
-                                    mq_offre.send(str(energy_to_send).encode())
-                                    productions[i] -= energy_to_send
+                            else:   # Si on a plus d'énergie que demandé
+                                mq_offre.send(str(energy_to_send).encode())
+                                productions[i] -= energy_to_send
 
-                            else:
-                                message_to_market.value = energy_left
-                                b.wait()
-                                b.wait()
+                         
 
                         except sysv_ipc.BusyError:
-                            pass
+                            message_to_market.value = energy_left
+                            productions[i] -= energy_left
+                            b.wait()
+                            b.wait()
 
                 else:   # Si on a est en déficit
                     deficit = -energy_left
                     try:
                         energy_received, _ = mq_offre.receive(block=False)
-                        energy_received = energy_received.decode()
+                        energy_received = energy_received.decode() 
+                        energy_received = float(energy_received)
 
-                        if energy_received != "":  # On regarde si il y a de l'énergie disponible
-                            energy_received = float(energy_received)
+                        if energy_received < deficit:  # Si on a recu moins que nécessaire
+                            productions[i] += energy_received
+                        else:  # Si on a recu plus que nécessaire
+                            productions[i] += deficit
+                            mq_offre.send(str(energy_received - deficit).encode())  # On renvoie l'énergie en trop
 
-                            if energy_received < deficit:  # Si on a recu moins que nécessaire
-                                productions[i] += energy_received
-                            else:  # Si on a recu plus que nécessaire
-                                productions[i] += deficit
-                                mq_offre.send(str(energy_received - deficit).encode())  # On renvoie l'énergie en trop
-                        else:
-                            mq_demande.send(str(deficit).encode())  # On fait une demande
 
                     except sysv_ipc.BusyError:
-                        pass
+                        mq_demande.send(str(deficit).encode())
+
 
         for i in range(len(consumptions)):
             if consumptions[i] > productions[i]:
@@ -142,7 +140,7 @@ run = Value("i", 1)
 
 largeur = 0.3
 
-nb_home = 3
+nb_home = 10
 barrier = Barrier(nb_home + 2)
 b = Barrier(2)
 
@@ -150,13 +148,13 @@ y1 = Array("d", range(nb_home))
 y2 = Array("d", range(nb_home))
 x1 = Array("d", range(nb_home))
 x2 = Array("d", [i + largeur for i in x1])
-policies = Array("i", range(nb_home))
+policies = Array("i", [1,1,1,1,2,2,2,3,3,3])
 message_to_market = Value("d", 0)
 
 for i in range(nb_home):
     y1[i] = random.randint(1, 100)
     y2[i] = random.randint(1, 100)
-    policies[i] = 1
+    #policies[i] = 1
 
     tcp_main = threading.Thread(target=han_tcp_main, args=(HOST, PORT_MAIN, run, barrier))
     tcp_market = threading.Thread(target=han_tcp_market, args=(HOST, PORT_MARKET, run, message_to_market, b))
