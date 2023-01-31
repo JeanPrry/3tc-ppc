@@ -11,12 +11,12 @@ from const import *
 key = 42
 
 
-def q_server(consumptions, productions, policies, run, barrier):    # Gestion de la queue
+def q_server(consumptions, productions, policies, run, barrier, b):    # Gestion de la queue
 
     mq_demande = sysv_ipc.MessageQueue(key, sysv_ipc.IPC_CREAT)
     mq_offre = sysv_ipc.MessageQueue(key + 1, sysv_ipc.IPC_CREAT)
-
     while run.value:
+        
 
         barrier.wait()
         print(consumptions[0], " ", productions[0], " , ", consumptions[1], " ", productions[1], " , ", consumptions[2], " ", productions[2])
@@ -34,6 +34,8 @@ def q_server(consumptions, productions, policies, run, barrier):    # Gestion de
 
                     elif policies[i] == 2:  # On vend direct au market
                         message_to_market.value = energy_left
+                        b.wait()
+                        b.wait()
 
                     elif policies[i] == 3:  # On donne si on a de la demande
                         try:
@@ -51,6 +53,8 @@ def q_server(consumptions, productions, policies, run, barrier):    # Gestion de
 
                             else:
                                 message_to_market.value = energy_left
+                                b.wait()
+                                b.wait()
 
                         except sysv_ipc.BusyError:
                             pass
@@ -79,6 +83,8 @@ def q_server(consumptions, productions, policies, run, barrier):    # Gestion de
             if consumptions[i] > productions[i]:
                 deficit = productions[i] - consumptions[i]
                 message_to_market.value = deficit
+                b.wait()
+                b.wait()
 
         print(consumptions[0], " ", productions[0], " , ", consumptions[1], " ", productions[1], " , ", consumptions[2],
               " ", productions[2], "\n")
@@ -119,15 +125,17 @@ def han_tcp_main(host, port, run, barrier):
             m = "wait for new command"
 
 
-def han_tcp_market(host, port, run, message_to_market):
+def han_tcp_market(host, port, run, message_to_market, b):
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((host, port))
         while run.value:
+            b.wait()
             if message_to_market.value != 0:
                 # envoi message au market
                 client_socket.sendall(str(message_to_market.value).encode())
                 message_to_market.value = 0
+                b.wait()
 
 
 run = Value("i", 1)
@@ -136,6 +144,7 @@ largeur = 0.3
 
 nb_home = 3
 barrier = Barrier(nb_home + 2)
+b = Barrier(2)
 
 y1 = Array("d", range(nb_home))
 y2 = Array("d", range(nb_home))
@@ -150,7 +159,7 @@ for i in range(nb_home):
     policies[i] = 1
 
     tcp_main = threading.Thread(target=han_tcp_main, args=(HOST, PORT_MAIN, run, barrier))
-    tcp_market = threading.Thread(target=han_tcp_market, args=(HOST, PORT_MARKET, run, message_to_market))
+    tcp_market = threading.Thread(target=han_tcp_market, args=(HOST, PORT_MARKET, run, message_to_market, b))
     tcp_main.start()
     tcp_market.start()
 
@@ -173,7 +182,7 @@ def update(num, ax):
 
 
 p = Process(target=animate, args=())
-p_q = Process(target=q_server, args=(y1, y2, policies, run, barrier))
+p_q = Process(target=q_server, args=(y1, y2, policies, run, barrier, b))
 
 p.start()
 p_q.start()
