@@ -68,6 +68,7 @@ def q_server(consumptions, productions, policies, run, barrier, b):    # Gestion
 
                         if energy_received < deficit:  # Si on a recu moins que nécessaire
                             productions[i] += energy_received
+                            mq_demande.send(str(deficit - energy_received).encode())    # On demande le manque
                         else:  # Si on a recu plus que nécessaire
                             productions[i] += deficit
                             mq_offre.send(str(energy_received - deficit).encode())  # On renvoie l'énergie en trop
